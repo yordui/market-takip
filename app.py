@@ -94,7 +94,6 @@ def urunu_listeden_sil(benzersiz_id):
 def urun_ara(kelime):
     tum_sonuclar = []
     
-    # Gerçek tarayıcı kimlikleri
     headers_guncel = {
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -106,14 +105,13 @@ def urun_ara(kelime):
     }
     
     try:
-        # 1. ADIM: Güvenlik Duvarını aşmak için kalıcı oturum (Session) başlat
+        # Oturum (Session) başlatarak siteye bağlanan kişiyi taklit ediyoruz
         oturum = requests.Session()
         
-        # 2. ADIM: Ana sayfayı ziyaret edip güvenlik çerezlerini (cookies) topla
+        # API'ye istek atmadan önce ana sayfayı ziyaret edip çerezleri alıyoruz
         oturum.get(BASE_URL, headers={"User-Agent": headers_guncel["User-Agent"]}, verify=False, timeout=10)
-        time.sleep(1) # Gerçek insan gibi 1 saniye bekle
+        time.sleep(1)
         
-        # 3. ADIM: Toplanan çerezlerle API sorgusu yap
         for sayfa_no in range(4):
             payload = {
                 "keywords": kelime.strip(),
@@ -124,6 +122,7 @@ def urun_ara(kelime):
                 "distance": 30
             }
             
+            # İstekleri artık requests.post değil, oturum.post üzerinden yapıyoruz
             res = oturum.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
             
             if res.status_code == 200:
