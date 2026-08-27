@@ -88,42 +88,50 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU (Sabit Adres: İçmeler Mh. Seyit Onbaşı Cd.) ---
+# --- API ARAMA FONKSİYONU (Esnek ve Genişletilmiş) ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Origin": "https://marketfiyati.org.tr",
+        "Referer": "https://marketfiyati.org.tr/",
         "Connection": "close"
     }
     
-    # Sitede kullandığınız adresin koordinatları sabitlendi
-    sabit_lat = 40.847500
-    sabit_lon = 29.303800
+    # Farklı koordinat merkezlerini ve geniş yarıçapı tarayarak bölgesel ürün engeline takılmıyoruz
+    koordinatlar = [
+        {"lat": 40.847500, "lon": 29.303800}, # İçmeler / Tuzla merkezi
+        {"lat": 40.823000, "lon": 29.310000}, # Tuzla genel
+        {"lat": 40.922000, "lon": 29.290000}  # Pendik/Gebze hattı
+    ]
     
-    for sayfa_no in range(3):
-        payload = {
-            "keywords": kelime,
-            "pages": sayfa_no,
-            "size": 100, 
-            "latitude": sabit_lat,
-            "longitude": sabit_lon,
-            "distance": 30
-        }
-        
-        try:
-            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=15)
-            if res.status_code == 200:
-                gelen_urunler = res.json().get("content", [])
-                if not gelen_urunler:
-                    break
-                tum_sonuclar.extend(gelen_urunler)
-            else:
-                break
-            time.sleep(0.5)
-        except Exception:
-            break
+    for koordinat in koordinatlar:
+        for sayfa_no in range(3):
+            payload = {
+                "keywords": kelime,
+                "pages": sayfa_no,
+                "size": 100, 
+                "latitude": koordinat["lat"],
+                "longitude": koordinat["lon"],
+                "distance": 50
+            }
             
+            try:
+                res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=15)
+                if res.status_code == 200:
+                    gelen_urunler = res.json().get("content", [])
+                    if not gelen_urunler:
+                        break
+                    for u in gelen_urunler:
+                        if u not in tum_sonuclar:
+                            tum_sonuclar.append(u)
+                else:
+                    break
+                time.sleep(0.3)
+            except Exception:
+                break
+                
     return tum_sonuclar
 
 # --- STREAMLIT WEB ARAYÜZÜ ---
@@ -131,7 +139,6 @@ st.set_page_config(page_title="İndirim Avcısı", layout="wide")
 init_db()
 
 st.title("🛒 İndirim Avcısı")
-st.caption("📍 Arama Merkezi: İçmeler Mh. Seyit Onbaşı Cd. (Tuzla/İstanbul)")
 
 tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
 
@@ -146,7 +153,7 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Ürünler toplanıyor...'):
+            with st.spinner('Tüm bölge depolarından ürünler taranıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
                     st.warning("Ürün bulunamadı.")
