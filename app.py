@@ -28,11 +28,10 @@ def init_db():
                   son_guncel_fiyat REAL,
                   son_guncel_birim REAL)''')
     
-    # Eski tablolarda son_guncel_birim sütunu yoksa hata vermemesi için ekleyelim
     try:
         c.execute("ALTER TABLE listem ADD COLUMN son_guncel_birim REAL")
     except sqlite3.OperationalError:
-        pass # Sütun zaten varsa hata vermez, geçer
+        pass
         
     conn.commit()
     conn.close()
@@ -258,7 +257,6 @@ with tab2:
                 c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.2, 1.2, 0.8])
                 
                 guncel_fiyat = row['son_guncel_fiyat'] if row['son_guncel_fiyat'] is not None else row['ilk_ambalaj']
-                # Güvenli kontrol: sütun yoksa ilk_birim kullan
                 guncel_birim = row['son_guncel_birim'] if 'son_guncel_birim' in row and row['son_guncel_birim'] is not None else row.get('ilk_birim')
                 
                 indirim_mi = guncel_fiyat < row['ilk_ambalaj']
@@ -266,15 +264,20 @@ with tab2:
                 
                 c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
                 
+                # İlk Paket ve İlk Birim
                 ilk_birim_deger = row['ilk_birim'] if row['ilk_birim'] is not None else 0.0
                 c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {ilk_birim_deger:.2f} ₺" if ilk_birim_deger > 0 else f"İlk Paket: {row['ilk_ambalaj']} ₺")
                 
-                birim_metin = f"Birim: {guncel_birim:.2f} ₺" if guncel_birim and guncel_birim > 0 else "Birim: Yok"
-                if indirim_mi:
-                    c3.markdown(f"Paket: :green[{guncel_fiyat} ₺]\n\n{birim_metin}")
-                else:
-                    c3.write(f"Paket: {guncel_fiyat} ₺\n\n{birim_metin}")
+                # Güncel Paket ve Güncel Birim
+                guncel_birim_deger = guncel_birim if guncel_birim is not None else 0.0
+                guncel_birim_metin = f"Güncel Birim: {guncel_birim_deger:.2f} ₺" if guncel_birim_deger > 0 else "Güncel Birim: Yok"
                 
+                if indirim_mi:
+                    c3.markdown(f"Güncel Paket: :green[{guncel_fiyat} ₺]\n\n{guncel_birim_metin}")
+                else:
+                    c3.write(f"Güncel Paket: {guncel_fiyat} ₺\n\n{guncel_birim_metin}")
+                
+                # Hedef Bilgileri
                 mevcut_h_amb = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
                 mevcut_h_bir = row['hedef_birim'] if row['hedef_birim'] is not None and row['hedef_birim'] > 0 else 0.0
                 
