@@ -4,6 +4,7 @@ import sqlite3
 import pandas as pd
 import urllib3
 import urllib.parse
+import time
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -39,6 +40,13 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
     conn.commit()
     conn.close()
 
+def hedef_fiyati_guncelle(benzersiz_id, yeni_hedef_ambalaj):
+    conn = sqlite3.connect('market.db')
+    c = conn.cursor()
+    c.execute("UPDATE listem SET hedef_ambalaj = ? WHERE id = ?", (yeni_hedef_ambalaj, benzersiz_id))
+    conn.commit()
+    conn.close()
+
 def urunu_listeden_sil(benzersiz_id):
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
@@ -55,11 +63,11 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    for sayfa_no in range(50):
+    for sayfa_no in range(2):
         payload = {
             "keywords": kelime,
             "pages": sayfa_no,
-            "size": 100, 
+            "size": 50, 
             "latitude": 40.8478933942271,
             "longitude": 29.30380154036927,
             "distance": 5
@@ -74,6 +82,7 @@ def urun_ara(kelime):
                 tum_sonuclar.extend(gelen_urunler)
             else:
                 break
+            time.sleep(1)
         except Exception:
             break
             
@@ -85,7 +94,7 @@ init_db()
 
 st.title("🛒 İndirim Avcısı")
 
-tab1, tab2 = st.tabs(["🔍 Ürün Ara ve Ekle", "📋 Listem ve İndirimler"])
+tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
 
 with tab1:
     MARKETLER = {"A101": "a101", "BİM": "bim", "Şok": "sok", "Migros": "migros", "CarrefourSA": "carrefour", "Hakmar": "hakmar", "Tarım Kredi": "tarim_kredi"}
@@ -196,7 +205,7 @@ with tab1:
         st.success(f"Filtrelere uygun toplam {gosterilen_urun_sayisi} adet ürün listelendi.")
 
 with tab2:
-    st.subheader("Takip Ettiğim Ürünler")
+    st.subheader("Takip Ettiğim Ürünler ve Fiyat Durumları")
     
     conn = sqlite3.connect('market.db')
     df = pd.read_sql_query("SELECT * FROM listem", conn)
@@ -211,7 +220,9 @@ with tab2:
             
         for index, row in df.iterrows():
             with st.container():
-                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
+                # Sütunları düzenledik: Ürün Adı | İlk Fiyat | Güncel Fiyat | Hedef Fiyat | Sil Butonu
+                c1, c2, c3, c4, c5 = st.columns([2.2, 1, 1, 1, 0.8])
+                
                 indirim_mi = row['son_guncel_fiyat'] < row['ilk_ambalaj']
                 ikon = "📉" if indirim_mi else "📌"
                 renk = "green" if indirim_mi else "normal"
@@ -220,9 +231,27 @@ with tab2:
                 c2.write(f"İlk: {row['ilk_ambalaj']} ₺")
                 c3.write(f":{renk}[Güncel: {row['son_guncel_fiyat']} ₺]")
                 
+                # Hedef Fiyatı Gösterme ve Düzenleme Alanı (Expander içinde)
+                mevcut_hedef = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None else 0.0
+                hedef_metin = f"Hedef: {mevcut_hedef} ₺" if mevcut_hedef > 0 else "Hedef Yok"
+                c4.write(hedef_metin)
+                
+                with c4.expander("✏️ Hedef Düzenle"):
+                    yeni_hedef = st.number_input(
+                        "Yeni Hedef (₺):", 
+                        min_value=0.0, 
+                        value=float(mevcut_hedef), 
+                        key=f"hedef_duzenle_{row['id']}"
+                    )
+                    if st.button("Güncelle", key=f"btn_hedef_{row['id']}"):
+                        hedef_fiyati_guncelle(row['id'], yeni_hedef if yeni_hedef > 0 else None)
+                        st.success("Hedef fiyat güncellendi!")
+                        st.rerun()
+
                 # Listeden Silme Butonu
-                if c4.button("🗑️ Sil", key=f"sil_{row['id']}"):
+                if c5.button("🗑️ Sil", key=f"sil_{row['id']}"):
                     urunu_listeden_sil(row['id'])
                     st.success(f"\"{row['urun_adi']}\" listeden çıkarıldı!")
-                    st.rerun() # Sayfayı anında yenileyerek ürünü listeden düşürüyoruz
+                    st.reron() if hasattr(st, "rerun") else st.experimental_rerun()
+                
                 st.divider()
