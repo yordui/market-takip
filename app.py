@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU (Genişletilmiş Mesafe ve Sayfa) ---
+# --- API ARAMA FONKSİYONU (Sabit Adres: İçmeler Mh. Seyit Onbaşı Cd.) ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -97,14 +97,17 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    # Daha fazla sonuç ve daha geniş alan taraması için sayfa sayısını ve mesafeyi artırdık
+    # Sitede kullandığınız adresin koordinatları sabitlendi
+    sabit_lat = 40.847500
+    sabit_lon = 29.303800
+    
     for sayfa_no in range(3):
         payload = {
             "keywords": kelime,
             "pages": sayfa_no,
             "size": 100, 
-            "latitude": 40.8478933942271,
-            "longitude": 29.30380154036927,
+            "latitude": sabit_lat,
+            "longitude": sabit_lon,
             "distance": 30
         }
         
@@ -128,6 +131,7 @@ st.set_page_config(page_title="İndirim Avcısı", layout="wide")
 init_db()
 
 st.title("🛒 İndirim Avcısı")
+st.caption("📍 Arama Merkezi: İçmeler Mh. Seyit Onbaşı Cd. (Tuzla/İstanbul)")
 
 tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
 
@@ -136,7 +140,7 @@ with tab1:
     
     col_arama, col_market = st.columns([2, 1])
     with col_arama:
-        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Süt):")
+        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Biryağ):")
     with col_market:
         secilen_marketler = st.multiselect("Market Seçimi", options=list(MARKETLER.keys()), default=list(MARKETLER.keys()))
     
