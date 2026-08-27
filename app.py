@@ -264,11 +264,9 @@ with tab2:
                 
                 c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
                 
-                # İlk Paket ve İlk Birim
                 ilk_birim_deger = row['ilk_birim'] if row['ilk_birim'] is not None else 0.0
                 c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {ilk_birim_deger:.2f} ₺" if ilk_birim_deger > 0 else f"İlk Paket: {row['ilk_ambalaj']} ₺")
                 
-                # Güncel Paket ve Güncel Birim
                 guncel_birim_deger = guncel_birim if guncel_birim is not None else 0.0
                 guncel_birim_metin = f"Güncel Birim: {guncel_birim_deger:.2f} ₺" if guncel_birim_deger > 0 else "Güncel Birim: Yok"
                 
@@ -277,7 +275,6 @@ with tab2:
                 else:
                     c3.write(f"Güncel Paket: {guncel_fiyat} ₺\n\n{guncel_birim_metin}")
                 
-                # Hedef Bilgileri
                 mevcut_h_amb = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
                 mevcut_h_bir = row['hedef_birim'] if row['hedef_birim'] is not None and row['hedef_birim'] > 0 else 0.0
                 
@@ -289,12 +286,12 @@ with tab2:
                     c4.write("🎯 Hedef: Yok")
                 
                 with c4.expander("✏️ Hedef Düzenle"):
-                    hedef_tipi = st.radio("Hedef Tipi:", ["Paket Fiyatı", "Birim Fiyatı"], key=f"h_tip_{row['id']}")
+                    hedef_tipi = st.radio("Hedef Tipi:", ["Hedef Yok", "Paket Fiyatı", "Birim Fiyatı"], key=f"h_tip_{row['id']}")
                     
                     yeni_h_amb, yeni_h_bir = 0.0, 0.0
                     if hedef_tipi == "Paket Fiyatı":
                         yeni_h_amb = st.number_input("Yeni Paket Hedef (₺):", min_value=0.0, value=float(mevcut_h_amb if mevcut_h_amb > 0 else guncel_fiyat), key=f"h_amb_{row['id']}")
-                    else:
+                    elif hedef_tipi == "Birim Fiyatı":
                         yeni_h_bir = st.number_input("Yeni Birim Hedef (₺):", min_value=0.0, value=float(mevcut_h_bir if mevcut_h_bir > 0 else (guncel_birim or 0.0)), key=f"h_bir_{row['id']}")
                     
                     if st.button("Güncelle", key=f"btn_hedef_{row['id']}"):
