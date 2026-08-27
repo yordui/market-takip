@@ -258,6 +258,17 @@ with tab2:
         if sadece_indirim:
             df = df[df['son_guncel_fiyat'] < df['ilk_ambalaj']]
             
+        # Kategori listesini alalım
+        kategoriler = ["Tümü"] + sorted(df['kategori'].dropna().unique().tolist())
+        
+        # Kategori Sekmeleri Oluşturma
+        secilen_kategori_tab = st.radio("Kategoriye Göre Filtrele:", kategoriler, horizontal=True)
+        
+        if secilen_kategori_tab != "Tümü":
+            df = df[df['kategori'] == secilen_kategori_tab]
+            
+        st.divider()
+        
         for index, row in df.iterrows():
             with st.container():
                 c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.2, 1.2, 0.8])
@@ -269,7 +280,8 @@ with tab2:
                 ikon = "📉" if indirim_mi else "📌"
                 
                 kategori_adi = row['kategori'] if 'kategori' in row and row['kategori'] else "Genel"
-                c1.write(f"{ikon} **[{kategori_adi}]** {row['urun_adi']} ({row['market_adi']})")
+                c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
+                c1.caption(f"📂 Kategori: {kategori_adi}")
                 
                 ilk_birim_deger = row['ilk_birim'] if row['ilk_birim'] is not None else 0.0
                 c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {ilk_birim_deger:.2f} ₺" if ilk_birim_deger > 0 else f"İlk Paket: {row['ilk_ambalaj']} ₺")
