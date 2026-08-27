@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU (Esnek ve Genişletilmiş) ---
+# --- API ARAMA FONKSİYONU (Genişletilmiş Kelime ve Çoklu Bölge Taraması) ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -99,39 +99,48 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    # Farklı koordinat merkezlerini ve geniş yarıçapı tarayarak bölgesel ürün engeline takılmıyoruz
+    # Kullanıcının aradığı kelimeye ek olarak akıllı türev kelimeler üretiyoruz
+    aranacak_kelimeler = [kelime]
+     kelime_kucuk = kelime.lower()
+    if "biryağ" in kelime_kucuk or "biryag" in kelime_kucuk:
+        aranan_ekler = ["biryağ", "ayçiçek", "yağ 5 lt"]
+        for ek in aranan_ekler:
+            if ek not in aranacak_kelimeler:
+                aranacak_kelimeler.append(ek)
+
     koordinatlar = [
-        {"lat": 40.847500, "lon": 29.303800}, # İçmeler / Tuzla merkezi
+        {"lat": 40.847500, "lon": 29.303800}, # İçmeler merkezi
         {"lat": 40.823000, "lon": 29.310000}, # Tuzla genel
         {"lat": 40.922000, "lon": 29.290000}  # Pendik/Gebze hattı
     ]
     
-    for koordinat in koordinatlar:
-        for sayfa_no in range(3):
-            payload = {
-                "keywords": kelime,
-                "pages": sayfa_no,
-                "size": 100, 
-                "latitude": koordinat["lat"],
-                "longitude": koordinat["lon"],
-                "distance": 50
-            }
-            
-            try:
-                res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=15)
-                if res.status_code == 200:
-                    gelen_urunler = res.json().get("content", [])
-                    if not gelen_urunler:
-                        break
-                    for u in gelen_urunler:
-                        if u not in tum_sonuclar:
-                            tum_sonuclar.append(u)
-                else:
-                    break
-                time.sleep(0.3)
-            except Exception:
-                break
+    for k_kelime in aranacak_kelimeler:
+        for koordinat in koordinatlar:
+            for sayfa_no in range(2):
+                payload = {
+                    "keywords": k_kelime,
+                    "pages": sayfa_no,
+                    "size": 100, 
+                    "latitude": koordinat["lat"],
+                    "longitude": koordinat["lon"],
+                    "distance": 50
+                }
                 
+                try:
+                    res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=15)
+                    if res.status_code == 200:
+                        gelen_urunler = res.json().get("content", [])
+                        if not gelen_urunler:
+                            break
+                        for u in gelen_urunler:
+                            if u not in tum_sonuclar:
+                                tum_sonuclar.append(u)
+                    else:
+                        break
+                    time.sleep(0.2)
+                except Exception:
+                    break
+                    
     return tum_sonuclar
 
 # --- STREAMLIT WEB ARAYÜZÜ ---
@@ -139,6 +148,7 @@ st.set_page_config(page_title="İndirim Avcısı", layout="wide")
 init_db()
 
 st.title("🛒 İndirim Avcısı")
+st.caption("📍 Arama Merkezi: İçmeler Mh. Seyit Onbaşı Cd. (Tuzla/İstanbul)")
 
 tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
 
