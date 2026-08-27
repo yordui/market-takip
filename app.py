@@ -267,6 +267,11 @@ with tab2:
         if secilen_kategori_tab != "Tümü":
             df = df[df['kategori'] == secilen_kategori_tab]
             
+        # Güncel birim fiyata göre en düşükten en yüksek sıralama (Sıralama için geçici sütun / hesaplama)
+        if not df.empty:
+            df['siralama_birim'] = df['son_guncel_birim'].fillna(df['ilk_birim']).fillna(999999)
+            df = df.sort_values(by='siralama_birim', ascending=True)
+            
         st.divider()
         
         for index, row in df.iterrows():
