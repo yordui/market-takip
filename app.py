@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU (Genişletilmiş Kelime ve Çoklu Bölge Taraması) ---
+# --- API ARAMA FONKSİYONU ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -99,9 +99,8 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    # Kullanıcının aradığı kelimeye ek olarak akıllı türev kelimeler üretiyoruz
     aranacak_kelimeler = [kelime]
-     kelime_kucuk = kelime.lower()
+    kelime_kucuk = kelime.lower()
     if "biryağ" in kelime_kucuk or "biryag" in kelime_kucuk:
         aranan_ekler = ["biryağ", "ayçiçek", "yağ 5 lt"]
         for ek in aranan_ekler:
@@ -109,9 +108,9 @@ def urun_ara(kelime):
                 aranacak_kelimeler.append(ek)
 
     koordinatlar = [
-        {"lat": 40.847500, "lon": 29.303800}, # İçmeler merkezi
-        {"lat": 40.823000, "lon": 29.310000}, # Tuzla genel
-        {"lat": 40.922000, "lon": 29.290000}  # Pendik/Gebze hattı
+        {"lat": 40.847500, "lon": 29.303800},
+        {"lat": 40.823000, "lon": 29.310000},
+        {"lat": 40.922000, "lon": 29.290000}
     ]
     
     for k_kelime in aranacak_kelimeler:
