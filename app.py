@@ -10,6 +10,7 @@ import random
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 API_URL = "https://api.marketfiyati.org.tr/api/v2/search"
+BASE_URL = "https://marketfiyati.org.tr/"
 
 if 'arama_sonuclari' not in st.session_state:
     st.session_state.arama_sonuclari = []
@@ -89,11 +90,11 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- WEB SİTESİNİN BİREBİR AYNISI (GÜVENLİ) API ARAMASI ---
+# --- OTURUM (SESSION) TAKLİTLİ API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     
-    # 418 IP Engellemesinden Kaçınmak İçin Gerçek Tarayıcı Kimliği
+    # Gerçek tarayıcı kimlikleri
     headers_guncel = {
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -101,33 +102,34 @@ def urun_ara(kelime):
         "Content-Type": "application/json",
         "Origin": "https://marketfiyati.org.tr",
         "Referer": "https://marketfiyati.org.tr/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"'
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     }
     
-    # Orijinal web sitesi gibi davranıyoruz: Size = 25
-    for sayfa_no in range(4): # İlk 4 sayfa (Toplam 100 Ürün)
-        payload = {
-            "keywords": kelime.strip(),
-            "page": sayfa_no,
-            "size": 25, 
-            "latitude": 40.847500,
-            "longitude": 29.303800,
-            "distance": 30
-        }
+    try:
+        # 1. ADIM: Güvenlik Duvarını aşmak için kalıcı oturum (Session) başlat
+        oturum = requests.Session()
         
-        try:
-            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
+        # 2. ADIM: Ana sayfayı ziyaret edip güvenlik çerezlerini (cookies) topla
+        oturum.get(BASE_URL, headers={"User-Agent": headers_guncel["User-Agent"]}, verify=False, timeout=10)
+        time.sleep(1) # Gerçek insan gibi 1 saniye bekle
+        
+        # 3. ADIM: Toplanan çerezlerle API sorgusu yap
+        for sayfa_no in range(4):
+            payload = {
+                "keywords": kelime.strip(),
+                "page": sayfa_no,
+                "size": 25, 
+                "latitude": 40.847500,
+                "longitude": 29.303800,
+                "distance": 30
+            }
+            
+            res = oturum.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
             
             if res.status_code == 200:
                 gelen_urunler = res.json().get("content", [])
                 if not gelen_urunler:
-                    break # Bu sayfa boşsa, diğer sayfalara bakmayı bırak
+                    break
                     
                 for urun in gelen_urunler:
                     if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
@@ -139,11 +141,10 @@ def urun_ara(kelime):
                 st.warning(f"Bağlantı Hatası: Sunucu {res.status_code} döndürdü.")
                 break
                 
-            # Sistemi yormamak için her istek arası rastgele (insan gibi) bir süre bekle
             time.sleep(random.uniform(0.5, 1.2))
             
-        except Exception as e:
-            break
+    except Exception as e:
+        st.error(f"❌ Hata oluştu: {e}")
             
     return tum_sonuclar
 
@@ -168,10 +169,10 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Orijinal sistem ayarlarına uygun arama yapılıyor...'):
+            with st.spinner('Siteye bağlanılıyor ve arama yapılıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
-                    st.warning("Ürün bulunamadı. Filtreye takılmış olabilirsiniz.")
+                    st.warning("Ürün bulunamadı veya sonuç gelmedi.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
