@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU ---
+# --- API ARAMA FONKSİYONU (Genişletilmiş Mesafe ve Sayfa) ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -97,14 +97,15 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    for sayfa_no in range(2):
+    # Daha fazla sonuç ve daha geniş alan taraması için sayfa sayısını ve mesafeyi artırdık
+    for sayfa_no in range(3):
         payload = {
             "keywords": kelime,
             "pages": sayfa_no,
-            "size": 50, 
+            "size": 100, 
             "latitude": 40.8478933942271,
             "longitude": 29.30380154036927,
-            "distance": 5
+            "distance": 30
         }
         
         try:
@@ -116,7 +117,7 @@ def urun_ara(kelime):
                 tum_sonuclar.extend(gelen_urunler)
             else:
                 break
-            time.sleep(1)
+            time.sleep(0.5)
         except Exception:
             break
             
@@ -273,7 +274,6 @@ with tab2:
                 
                 with img_col:
                     gorsel = row.get('gorsel_url')
-                    # Boş veya None kontrolü güvenli hale getirildi
                     if gorsel and isinstance(gorsel, str) and gorsel.startswith("http"):
                         st.image(gorsel, width=65)
                     else:
