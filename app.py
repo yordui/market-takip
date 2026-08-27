@@ -34,15 +34,24 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
     c = conn.cursor()
     benzersiz_id = f"{urun_id}-{market_adi}"
     
+    # Ürün zaten listede var mı kontrol edelim
+    c.execute("SELECT id FROM listem WHERE id = ?", (benzersiz_id,))
+    var_mi = c.fetchone()
+    
+    if var_mi:
+        conn.close()
+        return False, "Bu ürün zaten listenizde bulunuyor!"
+
     h_amb = hedef_ambalaj if hedef_ambalaj and hedef_ambalaj > 0 else None
     h_bir = hedef_birim if hedef_birim and hedef_birim > 0 else None
 
-    c.execute('''INSERT OR REPLACE INTO listem 
+    c.execute('''INSERT INTO listem 
                  (id, urun_adi, market_adi, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
               (benzersiz_id, urun_adi, market_adi, ambalaj, birim, h_amb, h_bir, ambalaj))
     conn.commit()
     conn.close()
+    return True, "Ürün başarıyla listeye eklendi!"
 
 def hedefleri_guncelle(benzersiz_id, yeni_hedef_ambalaj, yeni_hedef_birim):
     conn = sqlite3.connect('market.db')
@@ -204,8 +213,11 @@ with tab1:
                             hedef_birim = st.number_input("Hedef Birim Fiyatı (₺):", min_value=0.0, value=float(birim_fiyat), key=f"birim_{benzersiz_id}")
                             
                         if st.button("Listeme Ekle", key=f"btn_{benzersiz_id}"):
-                            urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
-                            st.success("Ürün başarıyla listeye eklendi!")
+                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
+                            if basarili:
+                                st.success(mesaj)
+                            else:
+                                st.warning(mesaj)
                     st.divider()
         
         st.success(f"Filtrelere uygun toplam {gosterilen_urun_sayisi} adet ürün listelendi.")
@@ -240,7 +252,6 @@ with tab2:
                 else:
                     c3.write(f"Güncel: {guncel_fiyat} ₺")
                 
-                # Hedef Bilgilerini Gösterme
                 mevcut_h_amb = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
                 mevcut_h_bir = row['hedef_birim'] if row['hedef_birim'] is not None and row['hedef_birim'] > 0 else 0.0
                 
