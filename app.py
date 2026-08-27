@@ -88,58 +88,39 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- API ARAMA FONKSİYONU ---
+# --- HIZLI API ARAMA FONKSİYONU ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Origin": "https://marketfiyati.org.tr",
-        "Referer": "https://marketfiyati.org.tr/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Connection": "close"
     }
     
-    aranacak_kelimeler = [kelime]
-    kelime_kucuk = kelime.lower()
-    if "biryağ" in kelime_kucuk or "biryag" in kelime_kucuk:
-        aranan_ekler = ["biryağ", "ayçiçek", "yağ 5 lt"]
-        for ek in aranan_ekler:
-            if ek not in aranacak_kelimeler:
-                aranacak_kelimeler.append(ek)
-
-    koordinatlar = [
-        {"lat": 40.847500, "lon": 29.303800},
-        {"lat": 40.823000, "lon": 29.310000},
-        {"lat": 40.922000, "lon": 29.290000}
-    ]
-    
-    for k_kelime in aranacak_kelimeler:
-        for koordinat in koordinatlar:
-            for sayfa_no in range(2):
-                payload = {
-                    "keywords": k_kelime,
-                    "pages": sayfa_no,
-                    "size": 100, 
-                    "latitude": koordinat["lat"],
-                    "longitude": koordinat["lon"],
-                    "distance": 50
-                }
-                
-                try:
-                    res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=15)
-                    if res.status_code == 200:
-                        gelen_urunler = res.json().get("content", [])
-                        if not gelen_urunler:
-                            break
-                        for u in gelen_urunler:
-                            if u not in tum_sonuclar:
-                                tum_sonuclar.append(u)
-                    else:
-                        break
-                    time.sleep(0.2)
-                except Exception:
+    # Hızlı ve sade standart arama (Tek merkez, 2 sayfa)
+    for sayfa_no in range(2):
+        payload = {
+            "keywords": kelime,
+            "pages": sayfa_no,
+            "size": 50, 
+            "latitude": 40.8478933942271,
+            "longitude": 29.30380154036927,
+            "distance": 10
+        }
+        
+        try:
+            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
+            if res.status_code == 200:
+                gelen_urunler = res.json().get("content", [])
+                if not gelen_urunler:
                     break
-                    
+                tum_sonuclar.extend(gelen_urunler)
+            else:
+                break
+            time.sleep(0.3)
+        except Exception:
+            break
+            
     return tum_sonuclar
 
 # --- STREAMLIT WEB ARAYÜZÜ ---
@@ -147,22 +128,21 @@ st.set_page_config(page_title="İndirim Avcısı", layout="wide")
 init_db()
 
 st.title("🛒 İndirim Avcısı")
-st.caption("📍 Arama Merkezi: İçmeler Mh. Seyit Onbaşı Cd. (Tuzla/İstanbul)")
 
-tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
+tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem dan İndirimler"])
 
 with tab1:
     MARKETLER = {"A101": "a101", "BİM": "bim", "Şok": "sok", "Migros": "migros", "CarrefourSA": "carrefour", "Hakmar": "hakmar", "Tarım Kredi": "tarim_kredi"}
     
     col_arama, col_market = st.columns([2, 1])
     with col_arama:
-        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Biryağ):")
+        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Süt):")
     with col_market:
         secilen_marketler = st.multiselect("Market Seçimi", options=list(MARKETLER.keys()), default=list(MARKETLER.keys()))
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Tüm bölge depolarından ürünler taranıyor...'):
+            with st.spinner('Ürünler aranıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
                     st.warning("Ürün bulunamadı.")
