@@ -88,42 +88,48 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- YÜKSEK KAPASİTELİ API ARAMASI ---
+# --- HATA AYIKLAMA (DEBUG) ÖZELLİKLİ API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://marketfiyati.org.tr",
+        "Referer": "https://marketfiyati.org.tr/"
     }
     
-    # 5 Sayfa ve Sayfa Başına 250 Ürün ile Toplam 1250 Ürünlük Dev Tarama
-    for sayfa_no in range(5):
-        payload = {
-            "keywords": kelime,
-            "page": sayfa_no,
-            "pages": sayfa_no,
-            "size": 250, 
-            "latitude": 40.847500,
-            "longitude": 29.303800,
-            "distance": 30
-        }
+    payload = {
+        "keywords": kelime,
+        "page": 0,
+        "size": 100, 
+        "latitude": 40.847500,
+        "longitude": 29.303800,
+        "distance": 30
+    }
+    
+    try:
+        res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
         
-        try:
-            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
-            if res.status_code == 200:
-                gelen_urunler = res.json().get("content", [])
-                if not gelen_urunler:
-                    break
-                for urun in gelen_urunler:
-                    # Çift (tekrarlayan) kayıtları engelliyoruz
-                    if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
-                        tum_sonuclar.append(urun)
-            else:
-                break
-            time.sleep(0.3)
-        except Exception:
-            break
+        # Eğer sunucu isteği reddederse ekranda hata kodunu gösterecek
+        if res.status_code != 200:
+            st.error(f"⚠️ API Bağlantı Hatası: Sunucu {res.status_code} kodu ile isteği reddetti.")
+            st.code(res.text) # Gelen hata mesajını ekrana basar
+            return []
             
+        gelen_urunler = res.json().get("content", [])
+        if not gelen_urunler:
+            st.warning("⚠️ API ile bağlantı kuruldu fakat sunucu '0 ürün' yanıtı döndürdü (Filtreye takıldı).")
+            
+        tum_sonuclar.extend(gelen_urunler)
+        
+    except requests.exceptions.Timeout:
+        st.error("⏳ API Yanıt Vermedi (Timeout): Sunucu cevap vermeyi reddediyor veya aşırı yüklü.")
+    except requests.exceptions.ConnectionError:
+        st.error("🚫 Bağlantı Koptu (Connection Error): Sunucu bulut IP'nizi engelliyor (DNS/IP Ban). Kodu kendi bilgisayarınızda çalıştırmayı deneyin.")
+    except Exception as e:
+        st.error(f"❌ Bilinmeyen Bir Hata Oluştu: {e}")
+        
     return tum_sonuclar
 
 # --- STREAMLIT WEB ARAYÜZÜ ---
@@ -147,10 +153,8 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Tüm raflar taranıyor (Bu işlem geniş aramalarda birkaç saniye sürebilir)...'):
+            with st.spinner('Arama yapılıyor... Lütfen hataları kontrol edin.'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
-                if not st.session_state.arama_sonuclari:
-                    st.warning("Ürün bulunamadı.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
@@ -178,8 +182,6 @@ with tab1:
         st.divider()
         
         gosterilen_urun_sayisi = 0
-        
-        # Market kodu filtresini esnetiyoruz (Büyük küçük harf sorunu yaşamamak için)
         secilen_api_isimleri = [MARKET_MAP[m].lower() for m in secilen_marketler]
         
         for urun in st.session_state.arama_sonuclari:
@@ -200,8 +202,6 @@ with tab1:
             
             for depot in urun.get("productDepotInfoList", []):
                 market_kodu = str(depot.get("marketAdi", "")).strip().lower()
-                
-                # API'den dönen isim ile bizim seçtiğimiz isimler arasında eşleşme arıyoruz
                 eslesen_gorsel_isim = "Bilinmeyen"
                 gecerli_market = False
                 
