@@ -22,6 +22,7 @@ def init_db():
                   urun_adi TEXT, 
                   market_adi TEXT, 
                   kategori TEXT,
+                  gorsel_url TEXT,
                   ilk_ambalaj REAL, 
                   ilk_birim REAL, 
                   hedef_ambalaj REAL, 
@@ -29,20 +30,17 @@ def init_db():
                   son_guncel_fiyat REAL,
                   son_guncel_birim REAL)''')
     
-    try:
-        c.execute("ALTER TABLE listem ADD COLUMN son_guncel_birim REAL")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        c.execute("ALTER TABLE listem ADD COLUMN kategori TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Eksik sütunlar için güvenli ekleme
+    for sutun, tip in [("son_guncel_birim", "REAL"), ("kategori", "TEXT"), ("gorsel_url", "TEXT")]:
+        try:
+            c.execute(f"ALTER TABLE listem ADD COLUMN {sutun} {tip}")
+        except sqlite3.OperationalError:
+            pass
         
     conn.commit()
     conn.close()
 
-def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, ambalaj, birim, hedef_ambalaj, hedef_birim):
+def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, gorsel_url, ambalaj, birim, hedef_ambalaj, hedef_birim):
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
     benzersiz_id = f"{urun_id}-{market_adi}"
@@ -62,9 +60,9 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, ambalaj, birim, 
         h_bir = hedef_birim
 
     c.execute('''INSERT INTO listem 
-                 (id, urun_adi, market_adi, kategori, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-              (benzersiz_id, urun_adi, market_adi, kategori, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
+                 (id, urun_adi, market_adi, kategori, gorsel_url, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (benzersiz_id, urun_adi, market_adi, kategori, gorsel_url, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
     conn.commit()
     conn.close()
     return True, "Ürün başarıyla listeye eklendi!"
@@ -235,7 +233,7 @@ with tab1:
                             hedef_birim = st.number_input("Hedef Birim Fiyatı (₺):", min_value=0.0, value=float(birim_fiyat), key=f"birim_{benzersiz_id}")
                             
                         if st.button("Listeme Ekle", key=f"btn_{benzersiz_id}"):
-                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, u_kategori, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
+                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, u_kategori, gorsel_url, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
                             if basarili:
                                 st.success(mesaj)
                             else:
@@ -258,16 +256,12 @@ with tab2:
         if sadece_indirim:
             df = df[df['son_guncel_fiyat'] < df['ilk_ambalaj']]
             
-        # Kategori listesini alalım
         kategoriler = ["Tümü"] + sorted(df['kategori'].dropna().unique().tolist())
-        
-        # Kategori Sekmeleri Oluşturma
         secilen_kategori_tab = st.radio("Kategoriye Göre Filtrele:", kategoriler, horizontal=True)
         
         if secilen_kategori_tab != "Tümü":
             df = df[df['kategori'] == secilen_kategori_tab]
             
-        # Güncel birim fiyata göre en düşükten en yüksek sıralama (Sıralama için geçici sütun / hesaplama)
         if not df.empty:
             df['siralama_birim'] = df['son_guncel_birim'].fillna(df['ilk_birim']).fillna(999999)
             df = df.sort_values(by='siralama_birim', ascending=True)
@@ -276,7 +270,15 @@ with tab2:
         
         for index, row in df.iterrows():
             with st.container():
-                c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.2, 1.2, 0.8])
+                img_col, c1, c2, c3, c4, c5 = st.columns([0.7, 2.2, 1.2, 1.2, 1.2, 0.8])
+                
+                # Ürün Fotoğrafı Gösterimi
+                with img_col:
+                    gorsel = row.get('gorsel_url')
+                    if gorsel:
+                        st.image(gorsel, width=65)
+                    else:
+                        st.write("📷 Yok")
                 
                 guncel_fiyat = row['son_guncel_fiyat'] if row['son_guncel_fiyat'] is not None else row['ilk_ambalaj']
                 guncel_birim = row['son_guncel_birim'] if 'son_guncel_birim' in row and row['son_guncel_birim'] is not None else row.get('ilk_birim')
