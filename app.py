@@ -1,16 +1,15 @@
 import streamlit as st
-import requests
 import sqlite3
 import pandas as pd
 import urllib3
 import urllib.parse
 import time
 import random
+import cloudscraper
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 API_URL = "https://api.marketfiyati.org.tr/api/v2/search"
-BASE_URL = "https://marketfiyati.org.tr/"
 
 if 'arama_sonuclari' not in st.session_state:
     st.session_state.arama_sonuclari = []
@@ -20,24 +19,14 @@ def init_db():
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS listem
-                 (id TEXT PRIMARY KEY, 
-                  urun_adi TEXT, 
-                  market_adi TEXT, 
-                  kategori TEXT,
-                  gorsel_url TEXT,
-                  ilk_ambalaj REAL, 
-                  ilk_birim REAL, 
-                  hedef_ambalaj REAL, 
-                  hedef_birim REAL,
-                  son_guncel_fiyat REAL,
-                  son_guncel_birim REAL)''')
-    
+                 (id TEXT PRIMARY KEY, urun_adi TEXT, market_adi TEXT, kategori TEXT,
+                  gorsel_url TEXT, ilk_ambalaj REAL, ilk_birim REAL, hedef_ambalaj REAL, 
+                  hedef_birim REAL, son_guncel_fiyat REAL, son_guncel_birim REAL)''')
     for sutun, tip in [("son_guncel_birim", "REAL"), ("kategori", "TEXT"), ("gorsel_url", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE listem ADD COLUMN {sutun} {tip}")
         except sqlite3.OperationalError:
             pass
-        
     conn.commit()
     conn.close()
 
@@ -45,24 +34,13 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, gorsel_url, amba
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
     benzersiz_id = f"{urun_id}-{market_adi}"
-    
     c.execute("SELECT id FROM listem WHERE id = ?", (benzersiz_id,))
-    var_mi = c.fetchone()
-    
-    if var_mi:
+    if c.fetchone():
         conn.close()
         return False, "Bu ürün zaten listenizde bulunuyor!"
-
-    h_amb = None
-    h_bir = None
-    if hedef_ambalaj and hedef_ambalaj > 0:
-        h_amb = hedef_ambalaj
-    elif hedef_birim and hedef_birim > 0:
-        h_bir = hedef_birim
-
-    c.execute('''INSERT INTO listem 
-                 (id, urun_adi, market_adi, kategori, gorsel_url, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+    h_amb = hedef_ambalaj if hedef_ambalaj and hedef_ambalaj > 0 else None
+    h_bir = hedef_birim if hedef_birim and hedef_birim > 0 else None
+    c.execute('''INSERT INTO listem VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               (benzersiz_id, urun_adi, market_adi, kategori, gorsel_url, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
     conn.commit()
     conn.close()
@@ -71,14 +49,8 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, gorsel_url, amba
 def hedefleri_guncelle(benzersiz_id, yeni_hedef_ambalaj, yeni_hedef_birim):
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
-    
-    h_amb = None
-    h_bir = None
-    if yeni_hedef_ambalaj and yeni_hedef_ambalaj > 0:
-        h_amb = yeni_hedef_ambalaj
-    elif yeni_hedef_birim and yeni_hedef_birim > 0:
-        h_bir = yeni_hedef_birim
-
+    h_amb = yeni_hedef_ambalaj if yeni_hedef_ambalaj and yeni_hedef_ambalaj > 0 else None
+    h_bir = yeni_hedef_birim if yeni_hedef_birim and yeni_hedef_birim > 0 else None
     c.execute("UPDATE listem SET hedef_ambalaj = ?, hedef_birim = ? WHERE id = ?", (h_amb, h_bir, benzersiz_id))
     conn.commit()
     conn.close()
@@ -90,27 +62,26 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- OTURUM (SESSION) TAKLİTLİ API ARAMASI ---
+# --- CLOUDSCRAPER (ANTI-BOT) İLE API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     
     headers_guncel = {
         "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Connection": "keep-alive",
         "Content-Type": "application/json",
         "Origin": "https://marketfiyati.org.tr",
-        "Referer": "https://marketfiyati.org.tr/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        "Referer": "https://marketfiyati.org.tr/"
     }
     
     try:
-        # Oturum (Session) başlatarak siteye bağlanan kişiyi taklit ediyoruz
-        oturum = requests.Session()
-        
-        # API'ye istek atmadan önce ana sayfayı ziyaret edip çerezleri alıyoruz
-        oturum.get(BASE_URL, headers={"User-Agent": headers_guncel["User-Agent"]}, verify=False, timeout=10)
-        time.sleep(1)
+        # Standart requests yerine Anti-Bot korumalarını aşan Cloudscraper kullanıyoruz
+        scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'desktop': True
+            }
+        )
         
         for sayfa_no in range(4):
             payload = {
@@ -122,8 +93,7 @@ def urun_ara(kelime):
                 "distance": 30
             }
             
-            # İstekleri artık requests.post değil, oturum.post üzerinden yapıyoruz
-            res = oturum.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
+            res = scraper.post(API_URL, json=payload, headers=headers_guncel, timeout=15)
             
             if res.status_code == 200:
                 gelen_urunler = res.json().get("content", [])
@@ -134,13 +104,13 @@ def urun_ara(kelime):
                     if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
                         tum_sonuclar.append(urun)
             elif res.status_code == 418:
-                st.error("⚠️ Sunucu hala bizi bot olarak görüyor. (418 Hatası)")
+                st.error("⚠️ Sunucu IP adresini tamamen kara listeye almış (418 Hatası).")
                 break
             else:
                 st.warning(f"Bağlantı Hatası: Sunucu {res.status_code} döndürdü.")
                 break
                 
-            time.sleep(random.uniform(0.5, 1.2))
+            time.sleep(random.uniform(0.8, 1.5))
             
     except Exception as e:
         st.error(f"❌ Hata oluştu: {e}")
@@ -168,7 +138,7 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Siteye bağlanılıyor ve arama yapılıyor...'):
+            with st.spinner('Güvenlik duvarı aşılarak arama yapılıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
                     st.warning("Ürün bulunamadı veya sonuç gelmedi.")
