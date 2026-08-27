@@ -21,6 +21,7 @@ def init_db():
                  (id TEXT PRIMARY KEY, 
                   urun_adi TEXT, 
                   market_adi TEXT, 
+                  kategori TEXT,
                   ilk_ambalaj REAL, 
                   ilk_birim REAL, 
                   hedef_ambalaj REAL, 
@@ -32,11 +33,16 @@ def init_db():
         c.execute("ALTER TABLE listem ADD COLUMN son_guncel_birim REAL")
     except sqlite3.OperationalError:
         pass
+
+    try:
+        c.execute("ALTER TABLE listem ADD COLUMN kategori TEXT")
+    except sqlite3.OperationalError:
+        pass
         
     conn.commit()
     conn.close()
 
-def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_ambalaj, hedef_birim):
+def urunu_listeye_ekle(urun_id, urun_adi, market_adi, kategori, ambalaj, birim, hedef_ambalaj, hedef_birim):
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
     benzersiz_id = f"{urun_id}-{market_adi}"
@@ -56,9 +62,9 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
         h_bir = hedef_birim
 
     c.execute('''INSERT INTO listem 
-                 (id, urun_adi, market_adi, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-              (benzersiz_id, urun_adi, market_adi, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
+                 (id, urun_adi, market_adi, kategori, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (benzersiz_id, urun_adi, market_adi, kategori, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
     conn.commit()
     conn.close()
     return True, "Ürün başarıyla listeye eklendi!"
@@ -177,7 +183,7 @@ with tab1:
             gorsel_url = urun.get("imageUrl")
             
             u_marka = urun.get("brand", "Belirtilmemiş")
-            u_kategori = urun.get("main_category", "Belirtilmemiş")
+            u_kategori = urun.get("main_category", "Genel")
             u_hacim = urun.get("refinedQuantityUnit") or urun.get("refinedVolumeOrWeight", "Belirtilmemiş")
             
             if secilen_markalar and u_marka not in secilen_markalar:
@@ -208,7 +214,7 @@ with tab1:
                             
                     with col1:
                         st.write(f"**{urun_adi}** ({market_gorsel_isim})")
-                        st.caption(f"{u_marka} | {u_kategori} | {u_hacim}")
+                        st.caption(f"Kategori: {u_kategori} | {u_marka} | {u_hacim}")
                         
                         market_fiyati_linki = f"https://marketfiyati.org.tr/arama?q={urllib.parse.quote(urun_adi)}"
                         st.markdown(f"[🔗 MarketFiyatı.org.tr'de İncele]({market_fiyati_linki})", unsafe_allow_html=True)
@@ -229,7 +235,7 @@ with tab1:
                             hedef_birim = st.number_input("Hedef Birim Fiyatı (₺):", min_value=0.0, value=float(birim_fiyat), key=f"birim_{benzersiz_id}")
                             
                         if st.button("Listeme Ekle", key=f"btn_{benzersiz_id}"):
-                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
+                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, u_kategori, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
                             if basarili:
                                 st.success(mesaj)
                             else:
@@ -262,7 +268,8 @@ with tab2:
                 indirim_mi = guncel_fiyat < row['ilk_ambalaj']
                 ikon = "📉" if indirim_mi else "📌"
                 
-                c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
+                kategori_adi = row['kategori'] if 'kategori' in row and row['kategori'] else "Genel"
+                c1.write(f"{ikon} **[{kategori_adi}]** {row['urun_adi']} ({row['market_adi']})")
                 
                 ilk_birim_deger = row['ilk_birim'] if row['ilk_birim'] is not None else 0.0
                 c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {ilk_birim_deger:.2f} ₺" if ilk_birim_deger > 0 else f"İlk Paket: {row['ilk_ambalaj']} ₺")
