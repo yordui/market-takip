@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- HIZLI VE STABİL API ARAMASI ---
+# --- AKILLI HARF UYUMLU VE STABİL API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -97,28 +97,47 @@ def urun_ara(kelime):
         "Connection": "close"
     }
     
-    # Hatalı parametreler çıkarıldı, stabil çalışan orijinal payload yapısına dönüldü
-    for sayfa_no in range(3):
-        payload = {
-            "keywords": kelime,
-            "pages": sayfa_no,
-            "size": 100, 
-            "latitude": 40.847500,
-            "longitude": 29.303800,
-            "distance": 30
-        }
-        
-        try:
-            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
-            if res.status_code == 200:
-                gelen_urunler = res.json().get("content", [])
-                if not gelen_urunler:
+    # Türkçe Büyük/Küçük harf uyumsuzluğu sorununu çözüyoruz
+    kelime_orijinal = kelime.strip()
+    kelime_bas_harf_buyuk = kelime_orijinal.title()
+    kelime_hepsi_buyuk = kelime_orijinal.replace("i", "İ").replace("ı", "I").upper()
+    
+    aranacak_varyasyonlar = []
+    for k in [kelime_orijinal, kelime_bas_harf_buyuk, kelime_hepsi_buyuk]:
+        if k not in aranacak_varyasyonlar:
+            aranacak_varyasyonlar.append(k)
+
+    # Her bir kelime ihtimalini (biryağ, Biryağ, BİRYAĞ) deniyoruz
+    for k_kelime in aranacak_varyasyonlar:
+        for sayfa_no in range(3):
+            payload = {
+                "keywords": k_kelime,
+                "pages": sayfa_no,
+                "size": 100, 
+                "latitude": 40.847500,
+                "longitude": 29.303800,
+                "distance": 30 # Güvenli sınırda bırakıldı, API'yi çökmekten korur
+            }
+            
+            try:
+                res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
+                if res.status_code == 200:
+                    gelen_urunler = res.json().get("content", [])
+                    if not gelen_urunler:
+                        break # Bu sayfada sonuç yoksa kelimeyi değiştirmeye geç
+                    
+                    for urun in gelen_urunler:
+                        # Aynı ürünü tekrar eklememek için kontrol
+                        if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
+                            tum_sonuclar.append(urun)
+                else:
                     break
-                tum_sonuclar.extend(gelen_urunler)
-            else:
+                time.sleep(0.3)
+            except Exception:
                 break
-            time.sleep(0.3)
-        except Exception:
+                
+        # Eğer bir kelime varyasyonunda sonuç bulduysak, sistemi yormamak için diğer harf varyasyonlarını denemeyi bırak.
+        if tum_sonuclar:
             break
             
     return tum_sonuclar
@@ -138,16 +157,16 @@ with tab1:
     
     col_arama, col_market = st.columns([2, 1])
     with col_arama:
-        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Süt):")
+        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Biryağ):")
     with col_market:
         secilen_marketler = st.multiselect("Market Seçimi", options=MARKETLER_LISTE, default=MARKETLER_LISTE)
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Ürünler aranıyor...'):
+            with st.spinner('Farklı harf kombinasyonları ile aranıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
-                    st.warning("Ürün bulunamadı.")
+                    st.warning("Ürün bulunamadı. Lütfen farklı bir isimle deneyin.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
@@ -194,11 +213,10 @@ with tab1:
                 continue
             
             for depot in urun.get("productDepotInfoList", []):
-                # Sorunu çözen zırh: API'den "A101" gelse de "a101" gelse de yakalayacak.
+                # API Bazen "A101", bazen " a101 " yazabilir. Her senaryoyu eşliyoruz.
                 market_kodu_ham = str(depot.get("marketAdi", ""))
                 market_kodu = market_kodu_ham.strip().lower()
                 
-                # API ismini, görsel isme (BİM, A101 vs) eşleştiriyoruz
                 eslesen_market_key = None
                 for k, v in MARKET_MAP.items():
                     if v == market_kodu or v.lower() == market_kodu_ham.lower():
