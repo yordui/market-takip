@@ -27,6 +27,13 @@ def init_db():
                   hedef_birim REAL,
                   son_guncel_fiyat REAL,
                   son_guncel_birim REAL)''')
+    
+    # Eski tablolarda son_guncel_birim sütunu yoksa hata vermemesi için ekleyelim
+    try:
+        c.execute("ALTER TABLE listem ADD COLUMN son_guncel_birim REAL")
+    except sqlite3.OperationalError:
+        pass # Sütun zaten varsa hata vermez, geçer
+        
     conn.commit()
     conn.close()
 
@@ -35,7 +42,6 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
     c = conn.cursor()
     benzersiz_id = f"{urun_id}-{market_adi}"
     
-    # Ürün zaten listede var mı kontrol edelim
     c.execute("SELECT id FROM listem WHERE id = ?", (benzersiz_id,))
     var_mi = c.fetchone()
     
@@ -43,7 +49,6 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
         conn.close()
         return False, "Bu ürün zaten listenizde bulunuyor!"
 
-    # Tekli hedef mantığı: Hangisi girildiyse diğeri sıfırlanır/None yapılır
     h_amb = None
     h_bir = None
     if hedef_ambalaj and hedef_ambalaj > 0:
@@ -253,23 +258,23 @@ with tab2:
                 c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.2, 1.2, 0.8])
                 
                 guncel_fiyat = row['son_guncel_fiyat'] if row['son_guncel_fiyat'] is not None else row['ilk_ambalaj']
-                guncel_birim = row['son_guncel_birim'] if row['son_guncel_birim'] is not None else row['ilk_birim']
+                # Güvenli kontrol: sütun yoksa ilk_birim kullan
+                guncel_birim = row['son_guncel_birim'] if 'son_guncel_birim' in row and row['son_guncel_birim'] is not None else row.get('ilk_birim')
                 
                 indirim_mi = guncel_fiyat < row['ilk_ambalaj']
                 ikon = "📉" if indirim_mi else "📌"
                 
                 c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
                 
-                # İlk ve Güncel Paket + Birim Fiyat Gösterimi
-                c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {row['ilk_birim']:.2f} ₺" if row['ilk_birim'] else f"İlk Paket: {row['ilk_ambalaj']} ₺")
+                ilk_birim_deger = row['ilk_birim'] if row['ilk_birim'] is not None else 0.0
+                c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {ilk_birim_deger:.2f} ₺" if ilk_birim_deger > 0 else f"İlk Paket: {row['ilk_ambalaj']} ₺")
                 
-                birim_metin = f"Birim: {guncel_birim:.2f} ₺" if guncel_birim else "Birim: Yok"
+                birim_metin = f"Birim: {guncel_birim:.2f} ₺" if guncel_birim and guncel_birim > 0 else "Birim: Yok"
                 if indirim_mi:
                     c3.markdown(f"Paket: :green[{guncel_fiyat} ₺]\n\n{birim_metin}")
                 else:
                     c3.write(f"Paket: {guncel_fiyat} ₺\n\n{birim_metin}")
                 
-                # Hedef Bilgileri (Tekli Hedef)
                 mevcut_h_amb = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
                 mevcut_h_bir = row['hedef_birim'] if row['hedef_birim'] is not None and row['hedef_birim'] > 0 else 0.0
                 
@@ -281,7 +286,6 @@ with tab2:
                     c4.write("🎯 Hedef: Yok")
                 
                 with c4.expander("✏️ Hedef Düzenle"):
-                    # Tekli seçim için radio veya input mantığı
                     hedef_tipi = st.radio("Hedef Tipi:", ["Paket Fiyatı", "Birim Fiyatı"], key=f"h_tip_{row['id']}")
                     
                     yeni_h_amb, yeni_h_bir = 0.0, 0.0
