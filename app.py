@@ -88,56 +88,40 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- AKILLI HARF UYUMLU VE STABİL API ARAMASI ---
+# --- YÜKSEK KAPASİTELİ API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Connection": "close"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    # Türkçe Büyük/Küçük harf uyumsuzluğu sorununu çözüyoruz
-    kelime_orijinal = kelime.strip()
-    kelime_bas_harf_buyuk = kelime_orijinal.title()
-    kelime_hepsi_buyuk = kelime_orijinal.replace("i", "İ").replace("ı", "I").upper()
-    
-    aranacak_varyasyonlar = []
-    for k in [kelime_orijinal, kelime_bas_harf_buyuk, kelime_hepsi_buyuk]:
-        if k not in aranacak_varyasyonlar:
-            aranacak_varyasyonlar.append(k)
-
-    # Her bir kelime ihtimalini (biryağ, Biryağ, BİRYAĞ) deniyoruz
-    for k_kelime in aranacak_varyasyonlar:
-        for sayfa_no in range(3):
-            payload = {
-                "keywords": k_kelime,
-                "pages": sayfa_no,
-                "size": 100, 
-                "latitude": 40.847500,
-                "longitude": 29.303800,
-                "distance": 30 # Güvenli sınırda bırakıldı, API'yi çökmekten korur
-            }
-            
-            try:
-                res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
-                if res.status_code == 200:
-                    gelen_urunler = res.json().get("content", [])
-                    if not gelen_urunler:
-                        break # Bu sayfada sonuç yoksa kelimeyi değiştirmeye geç
-                    
-                    for urun in gelen_urunler:
-                        # Aynı ürünü tekrar eklememek için kontrol
-                        if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
-                            tum_sonuclar.append(urun)
-                else:
+    # 5 Sayfa ve Sayfa Başına 250 Ürün ile Toplam 1250 Ürünlük Dev Tarama
+    for sayfa_no in range(5):
+        payload = {
+            "keywords": kelime,
+            "page": sayfa_no,
+            "pages": sayfa_no,
+            "size": 250, 
+            "latitude": 40.847500,
+            "longitude": 29.303800,
+            "distance": 30
+        }
+        
+        try:
+            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=12)
+            if res.status_code == 200:
+                gelen_urunler = res.json().get("content", [])
+                if not gelen_urunler:
                     break
-                time.sleep(0.3)
-            except Exception:
+                for urun in gelen_urunler:
+                    # Çift (tekrarlayan) kayıtları engelliyoruz
+                    if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
+                        tum_sonuclar.append(urun)
+            else:
                 break
-                
-        # Eğer bir kelime varyasyonunda sonuç bulduysak, sistemi yormamak için diğer harf varyasyonlarını denemeyi bırak.
-        if tum_sonuclar:
+            time.sleep(0.3)
+        except Exception:
             break
             
     return tum_sonuclar
@@ -163,10 +147,10 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Farklı harf kombinasyonları ile aranıyor...'):
+            with st.spinner('Tüm raflar taranıyor (Bu işlem geniş aramalarda birkaç saniye sürebilir)...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
-                    st.warning("Ürün bulunamadı. Lütfen farklı bir isimle deneyin.")
+                    st.warning("Ürün bulunamadı.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
@@ -194,7 +178,9 @@ with tab1:
         st.divider()
         
         gosterilen_urun_sayisi = 0
-        secilen_api_isimleri = [MARKET_MAP[m] for m in secilen_marketler]
+        
+        # Market kodu filtresini esnetiyoruz (Büyük küçük harf sorunu yaşamamak için)
+        secilen_api_isimleri = [MARKET_MAP[m].lower() for m in secilen_marketler]
         
         for urun in st.session_state.arama_sonuclari:
             urun_adi = urun.get("title")
@@ -213,24 +199,23 @@ with tab1:
                 continue
             
             for depot in urun.get("productDepotInfoList", []):
-                # API Bazen "A101", bazen " a101 " yazabilir. Her senaryoyu eşliyoruz.
-                market_kodu_ham = str(depot.get("marketAdi", ""))
-                market_kodu = market_kodu_ham.strip().lower()
+                market_kodu = str(depot.get("marketAdi", "")).strip().lower()
                 
-                eslesen_market_key = None
+                # API'den dönen isim ile bizim seçtiğimiz isimler arasında eşleşme arıyoruz
+                eslesen_gorsel_isim = "Bilinmeyen"
+                gecerli_market = False
+                
                 for k, v in MARKET_MAP.items():
-                    if v == market_kodu or v.lower() == market_kodu_ham.lower():
-                        eslesen_market_key = k
+                    if v.lower() == market_kodu or market_kodu in v.lower():
+                        eslesen_gorsel_isim = k
+                        if v.lower() in secilen_api_isimleri:
+                            gecerli_market = True
                         break
                         
-                if not eslesen_market_key:
-                    continue
-                    
-                if MARKET_MAP[eslesen_market_key] not in secilen_api_isimleri:
+                if not gecerli_market:
                     continue
                     
                 gosterilen_urun_sayisi += 1
-                market_gorsel_isim = eslesen_market_key
                 ambalaj_fiyat = depot.get("price")
                 birim_fiyat = depot.get("unitPriceValue")
                 
@@ -244,7 +229,7 @@ with tab1:
                             st.write("📷 Resim Yok")
                             
                     with col1:
-                        st.write(f"**{urun_adi}** ({market_gorsel_isim})")
+                        st.write(f"**{urun_adi}** ({eslesen_gorsel_isim})")
                         st.caption(f"Kategori: {u_kategori} | {u_marka} | {u_hacim}")
                         
                         market_fiyati_linki = f"https://marketfiyati.org.tr/arama?q={urllib.parse.quote(urun_adi)}"
@@ -255,8 +240,8 @@ with tab1:
                     with col3:
                         st.write(f"Birim: {birim_fiyat:.2f} ₺" if birim_fiyat else "Birim: Yok")
                     
-                    with st.expander(f"🔔 {market_gorsel_isim} - Takip Et / Hedef Belirle"):
-                        benzersiz_id = f"{urun_id}-{MARKET_MAP[market_gorsel_isim]}"
+                    with st.expander(f"🔔 {eslesen_gorsel_isim} - Takip Et / Hedef Belirle"):
+                        benzersiz_id = f"{urun_id}-{MARKET_MAP.get(eslesen_gorsel_isim, 'x')}"
                         takip_secim = st.radio("Takip Türü:", ["Sadece İndirimleri Takip Et", "Paket Fiyatı Hedefi Gir", "Birim Fiyatı Hedefi Gir"], key=f"radio_{benzersiz_id}")
                         
                         hedef_ambalaj, hedef_birim = None, None
@@ -266,7 +251,7 @@ with tab1:
                             hedef_birim = st.number_input("Hedef Birim Fiyatı (₺):", min_value=0.0, value=float(birim_fiyat), key=f"birim_{benzersiz_id}")
                             
                         if st.button("Listeme Ekle", key=f"btn_{benzersiz_id}"):
-                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, market_gorsel_isim, u_kategori, gorsel_url, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
+                            basarili, mesaj = urunu_listeye_ekle(urun_id, urun_adi, eslesen_gorsel_isim, u_kategori, gorsel_url, ambalaj_fiyat, birim_fiyat, hedef_ambalaj, hedef_birim)
                             if basarili:
                                 st.success(mesaj)
                             else:
