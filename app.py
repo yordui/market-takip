@@ -88,7 +88,7 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- HATA AYIKLAMA (DEBUG) ÖZELLİKLİ API ARAMASI ---
+# --- GÜVENLİ VE İNSAN HIZINDA API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
@@ -99,37 +99,40 @@ def urun_ara(kelime):
         "Referer": "https://marketfiyati.org.tr/"
     }
     
-    payload = {
-        "keywords": kelime,
-        "page": 0,
-        "size": 100, 
-        "latitude": 40.847500,
-        "longitude": 29.303800,
-        "distance": 30
-    }
-    
-    try:
-        res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
+    # Sadece 2 sayfa tarıyoruz ve sayfa başı boyutu makul bir limite (60) çekiyoruz
+    for sayfa_no in range(2):
+        payload = {
+            "keywords": kelime,
+            "page": sayfa_no,
+            "size": 60, 
+            "latitude": 40.847500,
+            "longitude": 29.303800,
+            "distance": 30
+        }
         
-        # Eğer sunucu isteği reddederse ekranda hata kodunu gösterecek
-        if res.status_code != 200:
-            st.error(f"⚠️ API Bağlantı Hatası: Sunucu {res.status_code} kodu ile isteği reddetti.")
-            st.code(res.text) # Gelen hata mesajını ekrana basar
-            return []
+        try:
+            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
             
-        gelen_urunler = res.json().get("content", [])
-        if not gelen_urunler:
-            st.warning("⚠️ API ile bağlantı kuruldu fakat sunucu '0 ürün' yanıtı döndürdü (Filtreye takıldı).")
+            if res.status_code == 200:
+                gelen_urunler = res.json().get("content", [])
+                if not gelen_urunler:
+                    break
+                    
+                for urun in gelen_urunler:
+                    if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
+                        tum_sonuclar.append(urun)
+            elif res.status_code == 418:
+                st.error("⚠️ API Güvenliği (418): Sistem çok hızlı istek attığımızı düşündü. Lütfen 1-2 dakika bekleyip tekrar arayın.")
+                break
+            else:
+                break
+                
+            # Sistemi yormamak ve banlanmamak için her istek arası 1 tam saniye dinlen
+            time.sleep(1.0)
             
-        tum_sonuclar.extend(gelen_urunler)
-        
-    except requests.exceptions.Timeout:
-        st.error("⏳ API Yanıt Vermedi (Timeout): Sunucu cevap vermeyi reddediyor veya aşırı yüklü.")
-    except requests.exceptions.ConnectionError:
-        st.error("🚫 Bağlantı Koptu (Connection Error): Sunucu bulut IP'nizi engelliyor (DNS/IP Ban). Kodu kendi bilgisayarınızda çalıştırmayı deneyin.")
-    except Exception as e:
-        st.error(f"❌ Bilinmeyen Bir Hata Oluştu: {e}")
-        
+        except Exception as e:
+            break
+            
     return tum_sonuclar
 
 # --- STREAMLIT WEB ARAYÜZÜ ---
@@ -153,8 +156,10 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Arama yapılıyor... Lütfen hataları kontrol edin.'):
+            with st.spinner('Güvenli modda ürünler aranıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
+                if not st.session_state.arama_sonuclari:
+                    st.warning("Ürün bulunamadı veya sonuç gelmedi.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
