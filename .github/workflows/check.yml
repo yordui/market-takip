@@ -1,0 +1,37 @@
+name: Otomatik Fiyat Kontrolu
+
+on:
+  schedule:
+    # Her gün Türkiye saati ile sabah 09:00 ve akşam 18:00'de çalışır (UTC saatine göre ayarlanmıştır)
+    - cron: '0 6,15 * * *'
+  workflow_dispatch: # Elle de tetiklenebilir
+
+jobs:
+  run-price-checker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo'yu Kopyala
+        uses: actions/checkout@v3
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Kütüphaneleri Yükle
+        run: |
+          pip install requests
+
+      - name: Fiyat Kontrol Betigini Calistir
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python check_prices.py
+
+      - name: Veritabani Guncellemelerini Kaydet (Commit)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add market.db
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Otomatik fiyat guncellemesi [skip ci]" && git push)
