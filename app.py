@@ -88,26 +88,24 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- HIZLI VE KESİN ÇÖZÜMLÜ API ARAMASI ---
+# --- HIZLI VE STABİL API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Connection": "close"
     }
     
-    aranacak_kelime = kelime.strip()
-    
-    # 5 sayfaya kadar genişletilmiş tarama (sayfalama hatası düzeltildi)
-    for sayfa_no in range(5):
+    # Hatalı parametreler çıkarıldı, stabil çalışan orijinal payload yapısına dönüldü
+    for sayfa_no in range(3):
         payload = {
-            "keywords": aranacak_kelime,
-            "page": sayfa_no,       # Doğru sayfalama parametresi eklendi
-            "pages": sayfa_no,      # Eski sisteme uyumluluk
+            "keywords": kelime,
+            "pages": sayfa_no,
             "size": 100, 
             "latitude": 40.847500,
             "longitude": 29.303800,
-            "distance": 20          # 20 KM'lik güvenli arama çapı
+            "distance": 30
         }
         
         try:
@@ -116,13 +114,10 @@ def urun_ara(kelime):
                 gelen_urunler = res.json().get("content", [])
                 if not gelen_urunler:
                     break
-                
-                # Çift ürünleri (tekrarları) önleme
-                for urun in gelen_urunler:
-                    if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
-                        tum_sonuclar.append(urun)
+                tum_sonuclar.extend(gelen_urunler)
             else:
                 break
+            time.sleep(0.3)
         except Exception:
             break
             
@@ -143,7 +138,7 @@ with tab1:
     
     col_arama, col_market = st.columns([2, 1])
     with col_arama:
-        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Biryağ):")
+        aranan_kelime = st.text_input("Aramak istediğiniz ürünü yazın (Örn: Süt):")
     with col_market:
         secilen_marketler = st.multiselect("Market Seçimi", options=MARKETLER_LISTE, default=MARKETLER_LISTE)
     
@@ -199,22 +194,25 @@ with tab1:
                 continue
             
             for depot in urun.get("productDepotInfoList", []):
-                # KRİTİK DÜZELTME BURADA: API'den gelen A101 adındaki küçük-büyük harf uyumsuzluğu giderildi!
+                # Sorunu çözen zırh: API'den "A101" gelse de "a101" gelse de yakalayacak.
                 market_kodu_ham = str(depot.get("marketAdi", ""))
                 market_kodu = market_kodu_ham.strip().lower()
                 
-                if market_kodu not in secilen_api_isimleri:
+                # API ismini, görsel isme (BİM, A101 vs) eşleştiriyoruz
+                eslesen_market_key = None
+                for k, v in MARKET_MAP.items():
+                    if v == market_kodu or v.lower() == market_kodu_ham.lower():
+                        eslesen_market_key = k
+                        break
+                        
+                if not eslesen_market_key:
+                    continue
+                    
+                if MARKET_MAP[eslesen_market_key] not in secilen_api_isimleri:
                     continue
                     
                 gosterilen_urun_sayisi += 1
-                
-                # Hata vermeden marketin güzel ismini buluyoruz
-                market_gorsel_isim = "Bilinmeyen Market"
-                for k, v in MARKET_MAP.items():
-                    if v == market_kodu:
-                        market_gorsel_isim = k
-                        break
-                        
+                market_gorsel_isim = eslesen_market_key
                 ambalaj_fiyat = depot.get("price")
                 birim_fiyat = depot.get("unitPriceValue")
                 
@@ -240,7 +238,7 @@ with tab1:
                         st.write(f"Birim: {birim_fiyat:.2f} ₺" if birim_fiyat else "Birim: Yok")
                     
                     with st.expander(f"🔔 {market_gorsel_isim} - Takip Et / Hedef Belirle"):
-                        benzersiz_id = f"{urun_id}-{market_kodu}"
+                        benzersiz_id = f"{urun_id}-{MARKET_MAP[market_gorsel_isim]}"
                         takip_secim = st.radio("Takip Türü:", ["Sadece İndirimleri Takip Et", "Paket Fiyatı Hedefi Gir", "Birim Fiyatı Hedefi Gir"], key=f"radio_{benzersiz_id}")
                         
                         hedef_ambalaj, hedef_birim = None, None
