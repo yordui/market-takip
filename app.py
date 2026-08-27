@@ -25,7 +25,8 @@ def init_db():
                   ilk_birim REAL, 
                   hedef_ambalaj REAL, 
                   hedef_birim REAL,
-                  son_guncel_fiyat REAL)''')
+                  son_guncel_fiyat REAL,
+                  son_guncel_birim REAL)''')
     conn.commit()
     conn.close()
 
@@ -42,13 +43,18 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
         conn.close()
         return False, "Bu ürün zaten listenizde bulunuyor!"
 
-    h_amb = hedef_ambalaj if hedef_ambalaj and hedef_ambalaj > 0 else None
-    h_bir = hedef_birim if hedef_birim and hedef_birim > 0 else None
+    # Tekli hedef mantığı: Hangisi girildiyse diğeri sıfırlanır/None yapılır
+    h_amb = None
+    h_bir = None
+    if hedef_ambalaj and hedef_ambalaj > 0:
+        h_amb = hedef_ambalaj
+    elif hedef_birim and hedef_birim > 0:
+        h_bir = hedef_birim
 
     c.execute('''INSERT INTO listem 
-                 (id, urun_adi, market_adi, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-              (benzersiz_id, urun_adi, market_adi, ambalaj, birim, h_amb, h_bir, ambalaj))
+                 (id, urun_adi, market_adi, ilk_ambalaj, ilk_birim, hedef_ambalaj, hedef_birim, son_guncel_fiyat, son_guncel_birim) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (benzersiz_id, urun_adi, market_adi, ambalaj, birim, h_amb, h_bir, ambalaj, birim))
     conn.commit()
     conn.close()
     return True, "Ürün başarıyla listeye eklendi!"
@@ -56,8 +62,14 @@ def urunu_listeye_ekle(urun_id, urun_adi, market_adi, ambalaj, birim, hedef_amba
 def hedefleri_guncelle(benzersiz_id, yeni_hedef_ambalaj, yeni_hedef_birim):
     conn = sqlite3.connect('market.db')
     c = conn.cursor()
-    h_amb = yeni_hedef_ambalaj if yeni_hedef_ambalaj and yeni_hedef_ambalaj > 0 else None
-    h_bir = yeni_hedef_birim if yeni_hedef_birim and yeni_hedef_birim > 0 else None
+    
+    h_amb = None
+    h_bir = None
+    if yeni_hedef_ambalaj and yeni_hedef_ambalaj > 0:
+        h_amb = yeni_hedef_ambalaj
+    elif yeni_hedef_birim and yeni_hedef_birim > 0:
+        h_bir = yeni_hedef_birim
+
     c.execute("UPDATE listem SET hedef_ambalaj = ?, hedef_birim = ? WHERE id = ?", (h_amb, h_bir, benzersiz_id))
     conn.commit()
     conn.close()
@@ -238,41 +250,49 @@ with tab2:
             
         for index, row in df.iterrows():
             with st.container():
-                c1, c2, c3, c4, c5 = st.columns([2.2, 1, 1, 1, 0.8])
+                c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.2, 1.2, 0.8])
                 
                 guncel_fiyat = row['son_guncel_fiyat'] if row['son_guncel_fiyat'] is not None else row['ilk_ambalaj']
+                guncel_birim = row['son_guncel_birim'] if row['son_guncel_birim'] is not None else row['ilk_birim']
+                
                 indirim_mi = guncel_fiyat < row['ilk_ambalaj']
                 ikon = "📉" if indirim_mi else "📌"
                 
                 c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
-                c2.write(f"İlk: {row['ilk_ambalaj']} ₺")
                 
+                # İlk ve Güncel Paket + Birim Fiyat Gösterimi
+                c2.write(f"İlk Paket: {row['ilk_ambalaj']} ₺\n\nİlk Birim: {row['ilk_birim']:.2f} ₺" if row['ilk_birim'] else f"İlk Paket: {row['ilk_ambalaj']} ₺")
+                
+                birim_metin = f"Birim: {guncel_birim:.2f} ₺" if guncel_birim else "Birim: Yok"
                 if indirim_mi:
-                    c3.markdown(f"Güncel: :green[{guncel_fiyat} ₺]")
+                    c3.markdown(f"Paket: :green[{guncel_fiyat} ₺]\n\n{birim_metin}")
                 else:
-                    c3.write(f"Güncel: {guncel_fiyat} ₺")
+                    c3.write(f"Paket: {guncel_fiyat} ₺\n\n{birim_metin}")
                 
+                # Hedef Bilgileri (Tekli Hedef)
                 mevcut_h_amb = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
                 mevcut_h_bir = row['hedef_birim'] if row['hedef_birim'] is not None and row['hedef_birim'] > 0 else 0.0
                 
-                hedef_metinler = []
                 if mevcut_h_amb > 0:
-                    hedef_metinler.append(f"Paket Hedef: {mevcut_h_amb} ₺")
-                if mevcut_h_bir > 0:
-                    hedef_metinler.append(f"Birim Hedef: {mevcut_h_bir} ₺")
-                
-                if hedef_metinler:
-                    c4.write(" | ".join(hedef_metinler))
+                    c4.write(f"🎯 Paket Hedef: {mevcut_h_amb} ₺")
+                elif mevcut_h_bir > 0:
+                    c4.write(f"🎯 Birim Hedef: {mevcut_h_bir} ₺")
                 else:
-                    c4.write("Hedef: Yok")
+                    c4.write("🎯 Hedef: Yok")
                 
                 with c4.expander("✏️ Hedef Düzenle"):
-                    yeni_h_amb = st.number_input("Yeni Paket Hedef (₺):", min_value=0.0, value=float(mevcut_h_amb), key=f"h_amb_{row['id']}")
-                    yeni_h_bir = st.number_input("Yeni Birim Hedef (₺):", min_value=0.0, value=float(mevcut_h_bir), key=f"h_bir_{row['id']}")
+                    # Tekli seçim için radio veya input mantığı
+                    hedef_tipi = st.radio("Hedef Tipi:", ["Paket Fiyatı", "Birim Fiyatı"], key=f"h_tip_{row['id']}")
                     
-                    if st.button("Hedefleri Güncelle", key=f"btn_hedef_{row['id']}"):
-                        hedefleri_guncelle(row['id'], yeni_h_amb, yeni_h_bir)
-                        st.success("Hedefler güncellendi!")
+                    yeni_h_amb, yeni_h_bir = 0.0, 0.0
+                    if hedef_tipi == "Paket Fiyatı":
+                        yeni_h_amb = st.number_input("Yeni Paket Hedef (₺):", min_value=0.0, value=float(mevcut_h_amb if mevcut_h_amb > 0 else guncel_fiyat), key=f"h_amb_{row['id']}")
+                    else:
+                        yeni_h_bir = st.number_input("Yeni Birim Hedef (₺):", min_value=0.0, value=float(mevcut_h_bir if mevcut_h_bir > 0 else (guncel_birim or 0.0)), key=f"h_bir_{row['id']}")
+                    
+                    if st.button("Güncelle", key=f"btn_hedef_{row['id']}"):
+                        hedefleri_guncelle(row['id'], yeni_h_amb if hedef_tipi == "Paket Fiyatı" else 0, yeni_h_bir if hedef_tipi == "Birim Fiyatı" else 0)
+                        st.success("Hedef güncellendi!")
                         st.rerun()
 
                 if c5.button("🗑️ Sil", key=f"sil_{row['id']}"):
