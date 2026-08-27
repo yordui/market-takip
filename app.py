@@ -220,21 +220,25 @@ with tab2:
             
         for index, row in df.iterrows():
             with st.container():
-                # Sütunları düzenledik: Ürün Adı | İlk Fiyat | Güncel Fiyat | Hedef Fiyat | Sil Butonu
                 c1, c2, c3, c4, c5 = st.columns([2.2, 1, 1, 1, 0.8])
                 
-                indirim_mi = row['son_guncel_fiyat'] < row['ilk_ambalaj']
+                guncel_fiyat = row['son_guncel_fiyat'] if row['son_guncel_fiyat'] is not None else row['ilk_ambalaj']
+                indirim_mi = guncel_fiyat < row['ilk_ambalaj']
                 ikon = "📉" if indirim_mi else "📌"
-                renk = "green" if indirim_mi else "normal"
                 
                 c1.write(f"{ikon} **{row['urun_adi']}** ({row['market_adi']})")
                 c2.write(f"İlk: {row['ilk_ambalaj']} ₺")
-                c3.write(f":{renk}[Güncel: {row['son_guncel_fiyat']} ₺]")
                 
-                # Hedef Fiyatı Gösterme ve Düzenleme Alanı (Expander içinde)
-                mevcut_hedef = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None else 0.0
-                hedef_metin = f"Hedef: {mevcut_hedef} ₺" if mevcut_hedef > 0 else "Hedef Yok"
-                c4.write(hedef_metin)
+                if indirim_mi:
+                    c3.markdown(f"Güncel: :green[{guncel_fiyat} ₺]")
+                else:
+                    c3.write(f"Güncel: {guncel_fiyat} ₺")
+                
+                mevcut_hedef = row['hedef_ambalaj'] if row['hedef_ambalaj'] is not None and row['hedef_ambalaj'] > 0 else 0.0
+                if mevcut_hedef > 0:
+                    c4.write(f"Hedef: {mevcut_hedef} ₺")
+                else:
+                    c4.write("Hedef: Yok")
                 
                 with c4.expander("✏️ Hedef Düzenle"):
                     yeni_hedef = st.number_input(
@@ -248,10 +252,9 @@ with tab2:
                         st.success("Hedef fiyat güncellendi!")
                         st.rerun()
 
-                # Listeden Silme Butonu
                 if c5.button("🗑️ Sil", key=f"sil_{row['id']}"):
                     urunu_listeden_sil(row['id'])
                     st.success(f"\"{row['urun_adi']}\" listeden çıkarıldı!")
-                    st.reron() if hasattr(st, "rerun") else st.experimental_rerun()
+                    st.rerun()
                 
                 st.divider()
