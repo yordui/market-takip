@@ -88,61 +88,42 @@ def urunu_listeden_sil(benzersiz_id):
     conn.commit()
     conn.close()
 
-# --- EN GÜÇLÜ VE KESİN API ARAMA FONKSİYONU ---
+# --- HIZLI VE KESİN ÇÖZÜMLÜ API ARAMASI ---
 def urun_ara(kelime):
     tum_sonuclar = []
     headers_guncel = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Connection": "close"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    # PROBLEMİN KAYNAĞI 1: Türkçe karakterlerde Büyük/Küçük harf duyarlılığı.
-    # ÇÖZÜM: Kelimeyi API'ye hem Orijinal, hem İlk Harfi Büyük, hem de Tamamen Büyük gönderiyoruz.
-    def turkce_buyuk_harf(metin):
-        return metin.replace("i", "İ").replace("ı", "I").upper()
-        
-    kelime_title = kelime.title()
-    kelime_upper = turkce_buyuk_harf(kelime)
+    aranacak_kelime = kelime.strip()
     
-    aranacak_varyasyonlar = []
-    for k in [kelime, kelime_title, kelime_upper]:
-        if k not in aranacak_varyasyonlar:
-            aranacak_varyasyonlar.append(k)
-
-    for k in aranacak_varyasyonlar:
-        # 4 sayfaya kadar tarama yapıyoruz (maksimum kapsam)
-        for sayfa_no in range(4): 
-            # PROBLEMİN KAYNAĞI 2: Mesafe (Distance) kısıtlaması bazı ürünleri gizliyor.
-            # ÇÖZÜM: distance değerini 9999 (Türkiye Geneli Limitsiz) yaparak tüm ana depoları zorla taratıyoruz.
-            payload = {
-                "keywords": k,
-                "pages": sayfa_no,
-                "size": 50, 
-                "latitude": 40.847893,
-                "longitude": 29.303801,
-                "distance": 9999 
-            }
-            
-            try:
-                res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
-                if res.status_code == 200:
-                    gelen_urunler = res.json().get("content", [])
-                    if not gelen_urunler:
-                        break # Bu sayfada ürün yoksa diğer sayfaya geçme
-                        
-                    for urun in gelen_urunler:
-                        if urun not in tum_sonuclar:
-                            tum_sonuclar.append(urun)
-                else:
+    # 5 sayfaya kadar genişletilmiş tarama (sayfalama hatası düzeltildi)
+    for sayfa_no in range(5):
+        payload = {
+            "keywords": aranacak_kelime,
+            "page": sayfa_no,       # Doğru sayfalama parametresi eklendi
+            "pages": sayfa_no,      # Eski sisteme uyumluluk
+            "size": 100, 
+            "latitude": 40.847500,
+            "longitude": 29.303800,
+            "distance": 20          # 20 KM'lik güvenli arama çapı
+        }
+        
+        try:
+            res = requests.post(API_URL, json=payload, headers=headers_guncel, verify=False, timeout=10)
+            if res.status_code == 200:
+                gelen_urunler = res.json().get("content", [])
+                if not gelen_urunler:
                     break
-                # Çok hızlı olması için bekleme süresini 0.1 saniyeye indirdik
-                time.sleep(0.1) 
-            except Exception:
-                break
                 
-        # Eğer ilk denenen kelime varyasyonunda sonuç bulduysa, diğerlerini tarayarak sistemi YAVAŞLATMA
-        if tum_sonuclar:
+                # Çift ürünleri (tekrarları) önleme
+                for urun in gelen_urunler:
+                    if not any(u.get("id") == urun.get("id") for u in tum_sonuclar):
+                        tum_sonuclar.append(urun)
+            else:
+                break
+        except Exception:
             break
             
     return tum_sonuclar
@@ -152,6 +133,7 @@ st.set_page_config(page_title="İndirim Avcısı", layout="wide")
 init_db()
 
 st.title("🛒 İndirim Avcısı")
+st.caption("📍 Arama Merkezi: İçmeler Mh. Seyit Onbaşı Cd. (Tuzla/İstanbul)")
 
 tab1, tab2 = st.tabs(["🔍 Ürün Ara dan Ekle", "📋 Listem ve İndirimler"])
 
@@ -167,10 +149,10 @@ with tab1:
     
     if st.button("Ara"):
         if aranan_kelime and secilen_marketler:
-            with st.spinner('Tüm Türkiye veri tabanı taranıyor...'):
+            with st.spinner('Ürünler aranıyor...'):
                 st.session_state.arama_sonuclari = urun_ara(aranan_kelime)
                 if not st.session_state.arama_sonuclari:
-                    st.warning("Ürün bulunamadı. Lütfen kelimeyi kontrol edin.")
+                    st.warning("Ürün bulunamadı.")
         else:
             st.warning("Lütfen aranacak ürünü ve en az bir marketi seçin.")
 
@@ -217,12 +199,22 @@ with tab1:
                 continue
             
             for depot in urun.get("productDepotInfoList", []):
-                market_kodu = depot.get("marketAdi")
+                # KRİTİK DÜZELTME BURADA: API'den gelen A101 adındaki küçük-büyük harf uyumsuzluğu giderildi!
+                market_kodu_ham = str(depot.get("marketAdi", ""))
+                market_kodu = market_kodu_ham.strip().lower()
+                
                 if market_kodu not in secilen_api_isimleri:
                     continue
                     
                 gosterilen_urun_sayisi += 1
-                market_gorsel_isim = [k for k, v in MARKET_MAP.items() if v == market_kodu][0]
+                
+                # Hata vermeden marketin güzel ismini buluyoruz
+                market_gorsel_isim = "Bilinmeyen Market"
+                for k, v in MARKET_MAP.items():
+                    if v == market_kodu:
+                        market_gorsel_isim = k
+                        break
+                        
                 ambalaj_fiyat = depot.get("price")
                 birim_fiyat = depot.get("unitPriceValue")
                 
