@@ -30,7 +30,6 @@ def init_db():
                   son_guncel_fiyat REAL,
                   son_guncel_birim REAL)''')
     
-    # Eksik sütunlar için güvenli ekleme
     for sutun, tip in [("son_guncel_birim", "REAL"), ("kategori", "TEXT"), ("gorsel_url", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE listem ADD COLUMN {sutun} {tip}")
@@ -272,10 +271,10 @@ with tab2:
             with st.container():
                 img_col, c1, c2, c3, c4, c5 = st.columns([0.7, 2.2, 1.2, 1.2, 1.2, 0.8])
                 
-                # Ürün Fotoğrafı Gösterimi
                 with img_col:
                     gorsel = row.get('gorsel_url')
-                    if gorsel:
+                    # Boş veya None kontrolü güvenli hale getirildi
+                    if gorsel and isinstance(gorsel, str) and gorsel.startswith("http"):
                         st.image(gorsel, width=65)
                     else:
                         st.write("📷 Yok")
